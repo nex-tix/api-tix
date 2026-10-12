@@ -61,7 +61,7 @@ class AuthService
             '+' . self::TOKEN_TTL . ' seconds'
         );
 
-        $this->db->table('gate_user_tokens')->insert([
+        $this->db->table('gate_api_tokens')->insert([
             'gate_user_id' => $user['id'],
             'token_hash'   => $tokenHash,
             'expires_at'   => $expiresAt->format('Y-m-d H:i:s'),
@@ -86,7 +86,7 @@ class AuthService
     {
         $tokenHash = hash('sha256', $plainToken);
 
-        $this->db->table('gate_user_tokens')
+        $this->db->table('gate_api_tokens')
             ->where('token_hash', $tokenHash)
             ->where('revoked_at', null)
             ->update([

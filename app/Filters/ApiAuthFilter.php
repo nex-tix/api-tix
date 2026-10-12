@@ -25,7 +25,7 @@ class ApiAuthFilter implements FilterInterface
 
         $db = Database::connect();
 
-        $token = $db->table('gate_user_tokens t')
+        $token = $db->table('gate_api_tokens t')
             ->select('t.id, t.gate_user_id')
             ->join(
                 'gate_users u',
