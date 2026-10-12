@@ -18,15 +18,15 @@ Dokumen ini memetakan hasil audit menyeluruh pada folder `mobile-tix` dan `api-t
 
 ### B. Kondisi di `api-tix` (CodeIgniter 4)
 1. **Status Endpoint (Fase 4 PRD)**:
-   - Baru memiliki **3 dari 8 endpoint** yang diimplementasikan:
+   - Baru memiliki **5 dari 8 endpoint** yang diimplementasikan:
      - `POST /api/login` (`AuthController::login`)
      - `POST /api/logout` (`AuthController::logout`)
      - `GET /api/me`
-   - **5 endpoint inti lainnya belum dibuat**:
      - `GET /api/checkpoints`
      - `POST /api/ticket/check`
      - `POST /api/ticket/validate-and-checkin`
      - `GET /api/dashboard/summary`
+   - **3 endpoint inti lainnya belum dibuat**:
      - `GET /api/ticket/history`
 2. **Format Data & Keamanan Backend**:
    - Backend saat ini mengharapkan dan mengembalikan **Plain JSON murni** (`{"username": "...", "password": "..."}`), belum memiliki middleware untuk membuka enkripsi AES-CBC atau validasi header `X-SIGNATURE`.

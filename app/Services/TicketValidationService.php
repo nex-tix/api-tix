@@ -174,11 +174,11 @@ class TicketValidationService
 
         try {
             // Lock baris tiket dengan FOR UPDATE untuk mencegah double-spend secara konkuren
-            $ticketRow = $this->db->table('tickets')
+            $sql = $this->db->table('tickets')
                 ->where('ticket_code', $ticketCode)
-                ->forUpdate()
-                ->get()
-                ->getRowArray();
+                ->getCompiledSelect(false) . ' FOR UPDATE';
+
+            $ticketRow = $this->db->query($sql)->getRowArray();
 
             if (!$ticketRow) {
                 // Catat log scan gagal
@@ -260,7 +260,6 @@ class TicketValidationService
             'visitor_count' => $visitorCount,
             'result' => $result,
             'scanned_at' => date('Y-m-d H:i:s'),
-            'created_at' => date('Y-m-d H:i:s'),
         ]);
     }
 
