@@ -93,6 +93,42 @@ class AuthController extends BaseController
         ]);
     }
 
+    public function me(): ResponseInterface
+    {
+        // Ambil user ID yang disimpan filter
+        $userId = $this->request->gateUserId ?? null;
+
+        if (!$userId) {
+            return $this->response
+                ->setStatusCode(401)
+                ->setJSON([
+                    'success' => false,
+                    'message' => 'User tidak terautentikasi.',
+                ]);
+        }
+
+        $db = \Config\Database::connect();
+        $user = $db->table('gate_users')
+            ->select('id, name, phone, is_active, created_at')
+            ->where('id', $userId)
+            ->get()
+            ->getRowArray();
+
+        if (!$user) {
+            return $this->response
+                ->setStatusCode(404)
+                ->setJSON([
+                    'success' => false,
+                    'message' => 'User tidak ditemukan.',
+                ]);
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'data'    => $user,
+        ]);
+    }
+
     private function getBearerToken(): ?string
     {
         $header = $this->request->getHeaderLine(

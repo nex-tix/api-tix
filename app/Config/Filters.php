@@ -34,7 +34,9 @@ class Filters extends BaseFilters
         'forcehttps'    => ForceHTTPS::class,
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
-        'api-auth' => \App\Filters\ApiAuthFilter::class,
+        'api-auth'      => \App\Filters\ApiAuthFilter::class,
+        'api-decrypt'   => \App\Filters\ApiEncryptionFilter::class,
+        'api-signature' => \App\Filters\ApiSignatureFilter::class,
 
     ];
 
@@ -53,8 +55,8 @@ class Filters extends BaseFilters
      */
     public array $required = [
         'before' => [
-            'forcehttps', // Force Global Secure Requests
-            'pagecache',  // Web Page Caching
+            // 'forcehttps', // disabled for Opsi B (allow HTTP on localhost)
+            'pagecache',
         ],
         'after' => [
             'pagecache',   // Web Page Caching

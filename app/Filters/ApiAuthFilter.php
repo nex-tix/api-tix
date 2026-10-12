@@ -41,6 +41,9 @@ class ApiAuthFilter implements FilterInterface
         if (!$token) {
             return $this->unauthorized();
         }
+        // Simpan data user & token ke request supaya bisa dipakai controller
+        $request->gateUserId = (int) $token['gate_user_id'];
+        $request->gateTokenId = (int) $token['id'];
 
         return null;
     }
