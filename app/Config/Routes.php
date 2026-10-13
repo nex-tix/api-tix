@@ -7,8 +7,9 @@ $routes->get('/', 'Home::index');
 
 
 $routes->group('api', ['namespace' => 'App\Controllers\Api'], static function ($routes) {
-    // Endpoint publik (login) - no filter for testing
+    // Endpoint publik (login, checkpoints)
     $routes->post('login', 'AuthController::login');
+    $routes->get('checkpoints', 'CheckpointController::index');
 
     // Endpoint yang memerlukan autentikasi - perlu decrypt, signature, dan auth
     $routes->group('', ['filter' => ['api-decrypt', 'api-signature', 'api-auth']], static function ($routes) {
