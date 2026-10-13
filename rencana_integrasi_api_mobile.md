@@ -156,7 +156,7 @@ sequenceDiagram
 #### [NEW] [api-tix/app/Services/TicketValidationService.php](file:///d:/laragon/www/nextix/api-tix/app/Services/)
 - Menangani validasi atomik sesuai PRD 9.1:
   - `checkTicket(string $ticketCode, int $checkpointId)`: Baca status tanpa mengubah status tiket (Mode Cek).
-  - `validateAndCheckIn(string $ticketCode, int $checkpointId, int $gateUserId)`: Menggunakan transaksi DB `SELECT ... FOR UPDATE`, verifikasi status (`NOT_FOUND` → `CANCELLED` → `ALREADY_USED` → `EXPIRED` → `VALID`), update tiket menjadi `used`, dan mencatat ke `checkin_history`.
+  - `validateAndCheckIn(string $ticketCode, int $checkpointId, int $gateUserId)`: Menggunakan transaksi DB `SELECT ... FOR UPDATE`, verifikasi status (`NOT_FOUND` → `CANCELLED` → `ALREADY_USED` → `EXPIRED` → `NOT_YET_VALID` → `VALID`), update tiket menjadi `used`, dan mencatat ke `checkin_history`.
 
 ---
 

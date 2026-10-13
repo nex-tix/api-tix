@@ -93,11 +93,12 @@ class TicketController extends BaseController
                 'valid' => 'VALID',
                 'already_used' => 'ALREADY_USED',
                 'expired' => 'EXPIRED',
+                'not_yet_valid' => 'NOT_YET_VALID',
                 'cancelled' => 'CANCELLED',
                 'not_found' => 'NOT_FOUND',
             ];
             if ($status === 'rejected') {
-                $builder->whereIn('h.result', ['ALREADY_USED', 'EXPIRED', 'CANCELLED', 'NOT_FOUND']);
+                $builder->whereIn('h.result', ['ALREADY_USED', 'EXPIRED', 'NOT_YET_VALID', 'CANCELLED', 'NOT_FOUND']);
             } elseif (isset($statusMap[$status])) {
                 $builder->where('h.result', $statusMap[$status]);
             }
@@ -116,6 +117,7 @@ class TicketController extends BaseController
                 'VALID' => 'valid',
                 'ALREADY_USED' => 'already_used',
                 'EXPIRED' => 'expired',
+                'NOT_YET_VALID' => 'not_yet_valid',
                 'CANCELLED' => 'cancelled',
                 'NOT_FOUND' => 'not_found',
             ];
