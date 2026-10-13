@@ -16,6 +16,12 @@ class TicketValidationService
     private CheckinHistoryModel $checkinHistoryModel;
     private GateUserModel $gateUserModel;
 
+    /**
+     * Zona waktu bisnis (WITA). Satu-satunya acuan "hari ini" saat memvalidasi
+     * masa berlaku tiket dan saat menstempel waktu check-in.
+     */
+    private const TIMEZONE = 'Asia/Makassar';
+
     public function __construct(ConnectionInterface $db)
     {
         $this->db = $db;
@@ -23,6 +29,59 @@ class TicketValidationService
         $this->checkpointModel = new CheckpointModel();
         $this->checkinHistoryModel = new CheckinHistoryModel();
         $this->gateUserModel = new GateUserModel();
+    }
+
+    /**
+     * Tanggal "hari ini" menurut WITA.
+     *
+     * Sengaja memakai zona waktu eksplisit, bukan date('Y-m-d') mentah: kalau
+     * Config\App::$appTimezone kembali ke UTC, pukul 00:00-07:59 WITA tanggal
+     * versi server masih tanggal kemarin sehingga tiket yang sudah kedaluwarsa
+     * ikut dianggap valid. Parameter $now hanya dipakai unit test.
+     */
+    public static function todayWita(?\DateTimeImmutable $now = null): string
+    {
+        $now ??= new \DateTimeImmutable('now');
+
+        return $now->setTimezone(new \DateTimeZone(self::TIMEZONE))->format('Y-m-d');
+    }
+
+    /**
+     * Stempel waktu sekarang (WITA) untuk ditulis ke database.
+     */
+    public static function nowWita(): string
+    {
+        return (new \DateTimeImmutable('now'))
+            ->setTimezone(new \DateTimeZone(self::TIMEZONE))
+            ->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * Aturan kedaluwarsa: tiket sudah lewat masa berlaku bila tanggal
+     * berlakunya sebelum hari ini (WITA). Tiket berlaku sampai pukul 24.00 WITA
+     * di tanggal tersebut.
+     */
+    public static function isExpiredDate(?string $validDate, ?string $today = null): bool
+    {
+        if (empty($validDate)) {
+            return false;
+        }
+
+        return $validDate < ($today ?? self::todayWita());
+    }
+
+    /**
+     * Aturan sebaliknya: tiket belum boleh dipakai bila tanggal berlakunya masih
+     * di depan hari ini (WITA). Tiket harian hanya sah pada tanggalnya sendiri,
+     * jadi tiket untuk tanggal lain tidak boleh masuk lebih awal.
+     */
+    public static function isNotYetValidDate(?string $validDate, ?string $today = null): bool
+    {
+        if (empty($validDate)) {
+            return false;
+        }
+
+        return $validDate > ($today ?? self::todayWita());
     }
 
     /**
@@ -75,12 +134,21 @@ class TicketValidationService
             ];
         }
 
-        // Cek kedaluwarsa tanggal (Zona waktu Makassar / WITA)
-        $today = date('Y-m-d');
-        if (!empty($ticket['valid_date']) && $ticket['valid_date'] < $today) {
+        $validDate = $ticket['valid_date'] ?? null;
+
+        // Cek kedaluwarsa tanggal (acuan zona waktu WITA — lihat isExpiredDate())
+        if (self::isExpiredDate($validDate)) {
             return [
                 'status' => 'expired',
                 'message' => 'Tiket sudah kedaluwarsa',
+            ];
+        }
+
+        // Cek tiket yang belum masuk masa berlaku (tanggalnya masih di depan)
+        if (self::isNotYetValidDate($validDate)) {
+            return [
+                'status' => 'not_yet_valid',
+                'message' => 'Tiket belum berlaku (berlaku ' . $validDate . ')',
             ];
         }
 
@@ -126,6 +194,7 @@ class TicketValidationService
             'valid' => $checkedIn ? 'Check-in berhasil' : 'Tiket valid',
             'already_used' => 'Tiket sudah pernah digunakan',
             'expired' => 'Tiket sudah kedaluwarsa',
+            'not_yet_valid' => 'Tiket belum berlaku',
             'cancelled' => 'Tiket dibatalkan',
             default => 'Tiket tidak ditemukan',
         };
@@ -206,6 +275,7 @@ class TicketValidationService
                 $historyResult = match ($status) {
                     'already_used' => 'ALREADY_USED',
                     'expired' => 'EXPIRED',
+                    'not_yet_valid' => 'NOT_YET_VALID',
                     'cancelled' => 'CANCELLED',
                     default => 'NOT_FOUND',
                 };
@@ -220,7 +290,7 @@ class TicketValidationService
             }
 
             // Tiket VALID: update tiket menjadi 'used'
-            $now = date('Y-m-d H:i:s');
+            $now = self::nowWita();
             $this->db->table('tickets')
                 ->where('id', $ticket['id'])
                 ->update([
@@ -259,7 +329,7 @@ class TicketValidationService
             'gate_user_id' => $gateUserId,
             'visitor_count' => $visitorCount,
             'result' => $result,
-            'scanned_at' => date('Y-m-d H:i:s'),
+            'scanned_at' => self::nowWita(),
         ]);
     }
 
