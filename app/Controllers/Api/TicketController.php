@@ -40,8 +40,13 @@ class TicketController extends BaseController
     public function validateAndCheckin(): ResponseInterface
     {
         $data = $this->request->getJSON(true) ?? [];
-        $ticketCode = trim((string)($data['ticket_code'] ?? $data['ticketCode'] ?? $data['ticketId'] ?? ''));
+        $ticketCode = trim((string)($data['ticket_code'] ?? $data['ticketCode'] ?? $data['ticketId'] ?? $data['code'] ?? ''));
         $checkpoint = (string)($data['checkpoint_id'] ?? $data['checkpointId'] ?? $data['checkpoint'] ?? '');
+        $actualVisitorCount = isset($data['actual_visitor_count'])
+            ? (int)$data['actual_visitor_count']
+            : (isset($data['actualVisitorCount'])
+                ? (int)$data['actualVisitorCount']
+                : (isset($data['visitor_count']) ? (int)$data['visitor_count'] : null));
 
         if ($ticketCode === '') {
             return $this->response->setStatusCode(422)->setJSON([
@@ -51,15 +56,17 @@ class TicketController extends BaseController
         }
 
         $gateUserId = (int)($this->request->gateUserId ?? 0);
-        $result = $this->validationService->validateAndCheckin($ticketCode, $checkpoint, $gateUserId);
+        $result = $this->validationService->validateAndCheckin($ticketCode, $checkpoint, $gateUserId, $actualVisitorCount);
 
-        return $this->response->setJSON([
-            'success' => $result['status'] === 'valid',
+        $isSuccess = $result['status'] === 'valid';
+        $statusCode = $isSuccess ? 200 : ($result['status'] === 'rejected' ? 422 : 200);
+
+        return $this->response->setStatusCode($statusCode)->setJSON([
+            'success' => $isSuccess,
             'data' => $result['payload'],
             'message' => $result['payload']['message'] ?? 'Proses check-in selesai',
         ]);
     }
-
     public function history(): ResponseInterface
     {
         $page = max(1, (int)($this->request->getGet('page') ?? 1));
@@ -147,3 +154,4 @@ class TicketController extends BaseController
         ]);
     }
 }
+

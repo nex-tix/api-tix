@@ -164,7 +164,11 @@ class TicketValidationService
     private function formatPayload(array $ticket, string $status, string $checkpointName, bool $checkedIn, ?string $message = null): array
     {
         $category = ($ticket['ticket_category'] ?? 'individual') === 'group' ? 'Rombongan' : 'Individu';
-        $visitorCount = (int)($ticket['total_visitors'] ?? 1);
+        $quota = (int)($ticket['total_visitors'] ?? 1);
+        $actualVisitors = isset($ticket['actual_visitors']) && $ticket['actual_visitors'] !== null
+            ? (int)$ticket['actual_visitors']
+            : $quota;
+        $visitorCount = $checkedIn ? $actualVisitors : $quota;
         $hasHolder = in_array($status, ['valid', 'already_used']);
 
         return [
@@ -176,6 +180,8 @@ class TicketValidationService
             'visitor_name' => $hasHolder ? ($ticket['customer_name'] ?? 'Pengunjung') : null,
             'buyer_name' => $hasHolder ? ($ticket['customer_name'] ?? 'Pengunjung') : null,
             'visitor_count' => $hasHolder ? $visitorCount : 0,
+            'actual_visitor_count' => $hasHolder ? $actualVisitors : 0,
+            'total_visitors' => $hasHolder ? $quota : 0,
             'category' => $hasHolder ? $category : null,
             'ticket_type' => $hasHolder ? $category : null,
             'used_at' => $ticket['used_at'] ?? null,
@@ -234,7 +240,7 @@ class TicketValidationService
     /**
      * Mode Check-in — validasi sekaligus ubah status tiket secara atomik dengan SELECT FOR UPDATE.
      */
-    public function validateAndCheckin(string $ticketCode, string $checkpointParam, int $gateUserId): array
+    public function validateAndCheckin(string $ticketCode, string $checkpointParam, int $gateUserId, ?int $actualVisitorCount = null): array
     {
         $checkpointId = $this->resolveCheckpointId($checkpointParam);
         $checkpointName = $this->resolveCheckpointName($checkpointParam);
@@ -289,21 +295,42 @@ class TicketValidationService
                 ];
             }
 
-            // Tiket VALID: update tiket menjadi 'used'
+            // Validasi kuota hadir: tidak boleh melebihi kuota terdaftar tiket
+            $quota = (int)($ticket['total_visitors'] ?? 1);
+            if ($actualVisitorCount !== null && $actualVisitorCount > $quota) {
+                $this->db->transComplete();
+                return [
+                    'status' => 'rejected',
+                    'payload' => [
+                        'ticket_code' => $ticketCode,
+                        'status' => 'rejected',
+                        'message' => "Jumlah hadir ({$actualVisitorCount} orang) melebihi kuota tiket ({$quota} orang). Tiket ditolak. Kelebihan orang harus membeli tiket baru terpisah.",
+                        'visitor_count' => $quota,
+                        'is_checked_in' => false,
+                    ],
+                ];
+            }
+
+            // Tentukan jumlah pengunjung riil yang masuk
+            $admitted = ($actualVisitorCount !== null && $actualVisitorCount > 0)
+                ? min($actualVisitorCount, $quota)
+                : $quota;
+
+            // Tiket VALID: update tiket menjadi 'used' dan catat actual_visitors
             $now = self::nowWita();
             $this->db->table('tickets')
                 ->where('id', $ticket['id'])
                 ->update([
                     'status' => 'used',
+                    'actual_visitors' => $admitted,
                     'used_at' => $now,
                     'used_by_gate_user_id' => $gateUserId,
                     'used_checkpoint_id' => $checkpointId,
                     'updated_at' => $now,
                 ]);
 
-            // Simpan riwayat check-in sukses
-            $visitorCount = (int)($ticket['total_visitors'] ?? 1);
-            $this->recordHistory($ticket['id'], $ticketCode, $checkpointId, $gateUserId, $visitorCount, 'VALID');
+            // Simpan riwayat check-in sukses dengan jumlah riil pengunjung
+            $this->recordHistory($ticket['id'], $ticketCode, $checkpointId, $gateUserId, $admitted, 'VALID');
 
             $this->db->transComplete();
 
