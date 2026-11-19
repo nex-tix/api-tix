@@ -20,6 +20,29 @@ class AuthController extends BaseController
     {
         $data = $this->request->getJSON(true);
 
+        // Fallback jika body baru saja didekripsi oleh filter
+        if (!is_array($data)) {
+            $rawBody = $this->request->getBody();
+            if (!empty($rawBody)) {
+                $data = json_decode((string)$rawBody, true);
+            }
+        }
+
+        // Fallback jika payload masih dalam format terenkripsi
+        if (is_array($data) && isset($data['encrypted'])) {
+            try {
+                $decryptedRaw = \App\Services\EncryptionService::decrypt((string)$data['encrypted']);
+                $data = json_decode($decryptedRaw, true);
+            } catch (\Throwable $e) {
+                return $this->response
+                    ->setStatusCode(400)
+                    ->setJSON([
+                        'success' => false,
+                        'message' => 'Gagal mendekripsi payload login.',
+                    ]);
+            }
+        }
+
         if (!is_array($data)) {
             return $this->response
                 ->setStatusCode(400)
@@ -95,8 +118,8 @@ class AuthController extends BaseController
 
     public function me(): ResponseInterface
     {
-        // Ambil user ID yang disimpan filter
-        $userId = $this->request->gateUserId ?? null;
+        // Ambil user ID yang disimpan filter (via header internal atau properti request)
+        $userId = (int) ($this->request->getHeaderLine('X-Gate-User-Id') ?: ($this->request->gateUserId ?? 0));
 
         if (!$userId) {
             return $this->response

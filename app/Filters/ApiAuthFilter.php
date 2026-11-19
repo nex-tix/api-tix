@@ -41,9 +41,17 @@ class ApiAuthFilter implements FilterInterface
         if (!$token) {
             return $this->unauthorized();
         }
-        // Simpan data user & token ke request supaya bisa dipakai controller
-        $request->gateUserId = (int) $token['gate_user_id'];
-        $request->gateTokenId = (int) $token['id'];
+
+        // Perbarui last_used_at sesuai PRD 7.1 & PRD 11
+        $db->table('gate_api_tokens')
+            ->where('id', (int) $token['id'])
+            ->update([
+                'last_used_at' => gmdate('Y-m-d H:i:s'),
+            ]);
+
+        // Simpan data user & token ke header request internal supaya bisa dipakai controller tanpa dynamic property deprecation
+        $request->setHeader('X-Gate-User-Id', (string) $token['gate_user_id']);
+        $request->setHeader('X-Gate-Token-Id', (string) $token['id']);
 
         return null;
     }

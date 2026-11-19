@@ -7,8 +7,8 @@ $routes->get('/', 'Home::index');
 
 
 $routes->group('api', ['namespace' => 'App\Controllers\Api'], static function ($routes) {
-    // Endpoint publik (login, checkpoints)
-    $routes->post('login', 'AuthController::login');
+    // Endpoint publik (login mendukung payload terenkripsi AES maupun plain JSON)
+    $routes->post('login', 'AuthController::login', ['filter' => 'api-decrypt']);
 
     // Endpoint yang memerlukan autentikasi - perlu decrypt, signature, dan auth
     $routes->group('', ['filter' => ['api-decrypt', 'api-signature', 'api-auth']], static function ($routes) {

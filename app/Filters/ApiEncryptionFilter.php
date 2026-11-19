@@ -27,6 +27,7 @@ class ApiEncryptionFilter implements FilterInterface
             $decrypted = EncryptionService::decrypt($data['encrypted']);
             $request->setBody($decrypted);
             $request->setHeader('Content-Type', 'application/json');
+            $request->setHeader('X-Internal-Encrypted', '1');
         } catch (\Exception $e) {
             return service('response')
                 ->setStatusCode(400)
@@ -48,6 +49,20 @@ class ApiEncryptionFilter implements FilterInterface
         $body = $response->getBody();
 
         if (empty($body) || $response->getStatusCode() >= 300) {
+            return $response;
+        }
+
+        // Jika developer secara eksplisit meminta plain JSON via header X-PLAIN-RESPONSE
+        if ($request->getHeaderLine('X-PLAIN-RESPONSE') === '1') {
+            return $response;
+        }
+
+        // Untuk endpoint login: jika request dikirim sebagai plain JSON (bukan terenkripsi),
+        // kembalikan respon plain JSON agar ramah testing Postman/cURL
+        $path = trim($request->getPath(), '/');
+        $isLogin = (bool) preg_match('#(^|/)login$#', $path);
+        $wasEncrypted = ($request->getHeaderLine('X-Internal-Encrypted') === '1');
+        if ($isLogin && !$wasEncrypted) {
             return $response;
         }
 

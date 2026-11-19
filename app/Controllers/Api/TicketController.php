@@ -55,7 +55,7 @@ class TicketController extends BaseController
             ]);
         }
 
-        $gateUserId = (int)($this->request->gateUserId ?? 0);
+        $gateUserId = (int) ($this->request->getHeaderLine('X-Gate-User-Id') ?: ($this->request->gateUserId ?? 0));
         $result = $this->validationService->validateAndCheckin($ticketCode, $checkpoint, $gateUserId, $actualVisitorCount);
 
         $isSuccess = $result['status'] === 'valid';
@@ -71,7 +71,7 @@ class TicketController extends BaseController
     {
         $page = max(1, (int)($this->request->getGet('page') ?? 1));
         $pageSize = min(50, max(1, (int)($this->request->getGet('pageSize') ?? 20)));
-        $gateUserId = (int)($this->request->gateUserId ?? 0);
+        $gateUserId = (int) ($this->request->getHeaderLine('X-Gate-User-Id') ?: ($this->request->gateUserId ?? 0));
         $date = trim((string)($this->request->getGet('date') ?? ''));
         $checkpoint = trim((string)($this->request->getGet('checkpoint') ?? ''));
         $status = trim((string)($this->request->getGet('status') ?? ''));
