@@ -25,10 +25,10 @@ class TicketValidationService
     public function __construct(ConnectionInterface $db)
     {
         $this->db = $db;
-        $this->ticketModel = new TicketModel();
-        $this->checkpointModel = new CheckpointModel();
-        $this->checkinHistoryModel = new CheckinHistoryModel();
-        $this->gateUserModel = new GateUserModel();
+        $this->ticketModel = new TicketModel($db);
+        $this->checkpointModel = new CheckpointModel($db);
+        $this->checkinHistoryModel = new CheckinHistoryModel($db);
+        $this->gateUserModel = new GateUserModel($db);
     }
 
     /**
@@ -85,6 +85,50 @@ class TicketValidationService
     }
 
     /**
+     * Parse format waktu sesi pertunjukan (misal: "17:00 - 18:00" atau "17.00 - 18.00").
+     *
+     * @return array{start: string, end: string, start_formatted: string, end_formatted: string}|null
+     */
+    public static function parseShowTimeRange(?string $showTime): ?array
+    {
+        if (empty($showTime)) {
+            return null;
+        }
+
+        if (preg_match('/(\d{1,2})[:.](\d{2})\s*-\s*(\d{1,2})[:.](\d{2})/', $showTime, $m)) {
+            return [
+                'start'           => sprintf('%02d:%02d:00', (int)$m[1], (int)$m[2]),
+                'end'             => sprintf('%02d:%02d:00', (int)$m[3], (int)$m[4]),
+                'start_formatted' => sprintf('%02d:%02d', (int)$m[1], (int)$m[2]),
+                'end_formatted'   => sprintf('%02d:%02d', (int)$m[3], (int)$m[4]),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Dapatkan konfigurasi batas waktu masuk lebih awal sebelum sesi mulai (dalam menit).
+     */
+    public function getShowTimeEntryBufferMinutes(): int
+    {
+        try {
+            $setting = $this->db->table('settings')
+                ->where('setting_key', 'show_time_entry_buffer_minutes')
+                ->get()
+                ->getRowArray();
+
+            if ($setting && is_numeric($setting['setting_value'])) {
+                return max(0, (int)$setting['setting_value']);
+            }
+        } catch (\Throwable $e) {
+            // Fallback jika query gagal
+        }
+
+        return 30; // default 30 menit
+    }
+
+    /**
      * Cari detail tiket dari database (lengkap dengan relasi transaksi, customer, checkpoint).
      */
     private function findTicketDetails(string $ticketCode): ?array
@@ -93,6 +137,7 @@ class TicketValidationService
             ->select('
                 t.*,
                 tr.invoice_code,
+                tr.show_time,
                 c.name as customer_name,
                 c.origin as customer_origin,
                 c.origin_type as customer_origin_type,
@@ -109,9 +154,9 @@ class TicketValidationService
     }
 
     /**
-     * Hitung status logika tiket (valid, already_used, expired, cancelled, not_found).
+     * Hitung status logika tiket (valid, already_used, expired, not_yet_valid, cancelled, not_found).
      */
-    private function evaluateStatus(?array $ticket): array
+    public function evaluateStatus(?array $ticket, ?\DateTimeImmutable $now = null): array
     {
         if (!$ticket) {
             return [
@@ -135,21 +180,53 @@ class TicketValidationService
         }
 
         $validDate = $ticket['valid_date'] ?? null;
+        $todayWita = self::todayWita($now);
 
-        // Cek kedaluwarsa tanggal (acuan zona waktu WITA — lihat isExpiredDate())
-        if (self::isExpiredDate($validDate)) {
+        // 1. Cek kedaluwarsa tanggal (jika tanggal tiket sudah lewat hari kemarin)
+        if (self::isExpiredDate($validDate, $todayWita)) {
             return [
                 'status' => 'expired',
-                'message' => 'Tiket sudah kedaluwarsa',
+                'message' => 'Tiket sudah kedaluwarsa (berlaku pada tanggal ' . $validDate . ')',
             ];
         }
 
-        // Cek tiket yang belum masuk masa berlaku (tanggalnya masih di depan)
-        if (self::isNotYetValidDate($validDate)) {
+        // 2. Cek tanggal masa depan (tiket untuk hari esok / mendatang)
+        if (self::isNotYetValidDate($validDate, $todayWita)) {
             return [
                 'status' => 'not_yet_valid',
-                'message' => 'Tiket belum berlaku (berlaku ' . $validDate . ')',
+                'message' => 'Tiket belum berlaku (berlaku tanggal ' . $validDate . ')',
             ];
+        }
+
+        // 3. Tanggal hari ini: Evaluasi jam sesi pertunjukan jika ada show_time
+        $showTime = $ticket['show_time'] ?? null;
+        $range = self::parseShowTimeRange($showTime);
+
+        if ($range !== null && !empty($validDate)) {
+            $nowWita = ($now ?? new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone(self::TIMEZONE));
+
+            // Batas selesai sesi pertunjukan (misal 18:00:00 WITA) - Ketat tanpa toleransi
+            $sessionEnd = new \DateTimeImmutable("{$validDate} {$range['end']}", new \DateTimeZone(self::TIMEZONE));
+
+            if ($nowWita > $sessionEnd) {
+                return [
+                    'status' => 'expired',
+                    'message' => 'Tiket sudah kedaluwarsa. Sesi pertunjukan ' . $showTime . ' telah berakhir pada pukul ' . $range['end_formatted'] . ' WITA.',
+                ];
+            }
+
+            // Batas awal boleh masuk gerbang (jam mulai sesi minus buffer menit)
+            $bufferMinutes = $this->getShowTimeEntryBufferMinutes();
+            $sessionStart = new \DateTimeImmutable("{$validDate} {$range['start']}", new \DateTimeZone(self::TIMEZONE));
+            $earliestEntry = $sessionStart->modify("-{$bufferMinutes} minutes");
+
+            if ($nowWita < $earliestEntry) {
+                $earliestFormatted = $earliestEntry->format('H:i');
+                return [
+                    'status' => 'not_yet_valid',
+                    'message' => "Tiket belum dapat digunakan. Pintu masuk untuk sesi {$showTime} dibuka mulai pukul {$earliestFormatted} WITA ({$bufferMinutes} menit sebelum pertunjukan).",
+                ];
+            }
         }
 
         return [
@@ -171,6 +248,16 @@ class TicketValidationService
         $visitorCount = $checkedIn ? $actualVisitors : $quota;
         $hasHolder = in_array($status, ['valid', 'already_used']);
 
+        $expiryDate = null;
+        if (!empty($ticket['valid_date'])) {
+            $range = self::parseShowTimeRange($ticket['show_time'] ?? null);
+            if ($range !== null) {
+                $expiryDate = $ticket['valid_date'] . ' ' . $range['end'];
+            } else {
+                $expiryDate = $ticket['valid_date'] . ' 23:59:59';
+            }
+        }
+
         return [
             'id' => (string)$ticket['id'],
             'ticket_id' => (string)$ticket['id'],
@@ -188,7 +275,8 @@ class TicketValidationService
             'used_by' => $ticket['used_by_name'] ?? null,
             'used_at_checkpoint' => $ticket['used_checkpoint_name'] ?? null,
             'checkpoint' => $checkpointName,
-            'expiry_date' => $ticket['valid_date'] ? $ticket['valid_date'] . ' 23:59:59' : null,
+            'expiry_date' => $expiryDate,
+            'show_time' => $ticket['show_time'] ?? null,
             'is_checked_in' => $checkedIn,
             'message' => $message ?? $this->defaultMessage($status, $checkedIn),
         ];
