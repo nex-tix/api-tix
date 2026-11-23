@@ -7,14 +7,14 @@ $routes->get('/', 'Home::index');
 
 
 $routes->group('api', ['namespace' => 'App\Controllers\Api'], static function ($routes) {
-    // Endpoint publik (login mendukung payload terenkripsi AES maupun plain JSON)
+    // Endpoint publik (login mendukung payload terenkripsi AES maupun plain JSON, dan daftar checkpoints)
     $routes->post('login', 'AuthController::login', ['filter' => 'api-decrypt']);
+    $routes->get('checkpoints', 'CheckpointController::index');
 
     // Endpoint yang memerlukan autentikasi - perlu decrypt, signature, dan auth
     $routes->group('', ['filter' => ['api-decrypt', 'api-signature', 'api-auth']], static function ($routes) {
         $routes->post('logout', 'AuthController::logout');
         $routes->get('me', 'AuthController::me');
-        $routes->get('checkpoints', 'CheckpointController::index');
         $routes->post('ticket/check', 'TicketController::check');
         $routes->post('ticket/validate-and-checkin', 'TicketController::validateAndCheckin');
         $routes->get('dashboard/summary', 'DashboardController::summary');
