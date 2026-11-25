@@ -277,6 +277,7 @@ class TicketValidationService
             'checkpoint' => $checkpointName,
             'expiry_date' => $expiryDate,
             'show_time' => $ticket['show_time'] ?? null,
+            'session_info' => !empty($ticket['show_time']) ? 'Sesi ' . $ticket['show_time'] . ' WITA' : null,
             'is_checked_in' => $checkedIn,
             'message' => $message ?? $this->defaultMessage($status, $checkedIn),
         ];
